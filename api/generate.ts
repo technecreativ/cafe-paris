@@ -37,7 +37,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const genAI = new GoogleGenerativeAI(apiKey)
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
 
     const prompt = `Eres el community manager de Café Paris, una cafetería elegante de estilo parisino.
 Genera un ${typeLabels[contentType].es} para el producto "${product.name_es}" (${product.name_en}).
@@ -68,7 +68,8 @@ Reglas:
 
     return res.status(200).json(parsed)
   } catch (err) {
-    console.error('Gemini error:', err)
-    return res.status(500).json({ error: 'Failed to generate content' })
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error('Gemini error:', msg)
+    return res.status(500).json({ error: 'Failed to generate content', detail: msg })
   }
 }
