@@ -1,5 +1,4 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { GoogleGenerativeAI } from '@google/generative-ai'
 
 interface Product {
   name_es: string
@@ -30,16 +29,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'Missing product or contentType' })
   }
 
-  const apiKey = process.env.GEMINI_API_KEY
+  const apiKey = process.env.GROQ_API_KEY
   if (!apiKey) {
     return res.status(500).json({ error: 'API key not configured' })
   }
 
-  try {
-    const genAI = new GoogleGenerativeAI(apiKey)
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
-
-    const prompt = `Eres el community manager de Café Paris, una cafetería elegante de estilo parisino.
+  const prompt = `Eres el community manager de Café Paris, una cafetería elegante de estilo parisino.
 Genera un ${typeLabels[contentType].es} para el producto "${product.name_es}" (${product.name_en}).
 
 Descripción: ${product.desc_es}
@@ -59,17 +54,39 @@ Reglas:
 - Los hashtags siempre incluir #CaféParis.
 - El texto en español e inglés deben ser equivalentes pero no traducción literal.`
 
-    const result = await model.generateContent(prompt)
-    const text   = result.response.text().trim()
+  try {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.8,
+        max_tokens: 512,
+      }),
+    })
 
-    // Limpiar posible markdown de código
+    if (!response.ok) {
+      const errText = await response.text()
+      console.error('Groq API error:', response.status, errText)
+      return res.status(500).json({ error: 'Failed to generate content', detail: errText })
+    }
+
+    const data = await response.json() as {
+      choices: { message: { content: string } }[]
+    }
+    const text = data.choices[0].message.content.trim()
+
     const clean = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
     const parsed = JSON.parse(clean) as { es: string; en: string; hashtags: string[] }
 
     return res.status(200).json(parsed)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    console.error('Gemini error:', msg)
+    console.error('Generate error:', msg)
     return res.status(500).json({ error: 'Failed to generate content', detail: msg })
   }
 }
